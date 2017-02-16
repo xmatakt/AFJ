@@ -130,15 +130,5 @@ namespace interpreter
                     return CreateJumpPairs(++currentIndex);
             }
         }
-
-        //private static int CheckParenthesis(int currentIndex, List<Commands> parenthesis)
-        //{
-        //    for (var i = ++currentIndex; i < parenthesis.Count; i++)
-        //    {
-                
-        //    }
-        //}
-
-        //private static void FindLeftParenthesis()
     }
 }
