@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Resources;
 using System.Text;
 using System.Text.RegularExpressions;
 
@@ -13,39 +14,40 @@ namespace interpreter
         private static readonly Dictionary<string, Commands> cmdDictionary = CommandsDictionary.CmdDictionary;
         private static List<Commands> commands = null;
         private static List<JumpPair> jumpPairs = null;
-        private StreamReader inputStreamReader = null;
-        private StreamWriter outputStreamWriter = null;
-        private byte[] inputArray = null;
-        private byte[] outputArray = null;
+        private static BinaryReader inputStreamReader = null;
+        private static BinaryWriter outputStreamWriter = null;
         private static byte[] cellArray = null;
         private static bool canExecute = false;
 
         public NLProgram(string prgPath, string inputPath, string outputPath)
         {
-            
             cellArray = new byte[100000];
-            //cellArray[0] = 0xFF;
-
-            //Console.WriteLine((char)cellArray[0]);
-
             jumpPairs = new List<JumpPair>();
 
             try
             {
+                CheckFile(prgPath, ".txt");
+                CheckFile(inputPath, ".bin");
+                //CheckFile(outputPath, ".bin");
+
+                inputStreamReader = new BinaryReader(new FileStream(inputPath, FileMode.Open));
+                outputStreamWriter = new BinaryWriter(new FileStream(outputPath, FileMode.OpenOrCreate));
+
                 CreateProgram(prgPath);
-                inputArray = new BinaryReader(new FileStream(inputPath, FileMode.Open)).Read(,);
-                //inputStreamReader = new StreamReader(inputPath);
-                //outputStreamWriter = new StreamWriter(outputPath);
+                canExecute = true;
             }
             catch (Exception e)
             {
+                Console.ForegroundColor = ConsoleColor.Yellow;
                 Console.WriteLine(e.Message);
             }
         }
 
-        #region executing
         public int ExecuteProgram()
         {
+            if (!canExecute)
+                throw Exceptions.CantExecute;
+
             var dataPointer = 0;
 
             for (var i = 0; i < commands.Count; i++)
@@ -67,20 +69,43 @@ namespace interpreter
                     case Commands.Write:
                         dataPointer = Write(dataPointer);
                         break;
-                    default:
+                    case Commands.Read:
+                        dataPointer = Read(dataPointer);
                         break;
+                    case Commands.JumpForward:
+                        i = JumpForward(dataPointer, i);
+                        break;
+                    case Commands.JumpBackward:
+                        i = JumpBackward(dataPointer, i);
+                        break;
+                    case Commands.AddDecadic:
+                        dataPointer = AddDecadic(dataPointer, i);
+                        break;
+                    case Commands.RemoveDecadic:
+                        dataPointer = RemoveDecadic(dataPointer, i);
+                        break;
+                    case Commands.Nop:
+                        break;
+                    case Commands.Reset:
+                        dataPointer = Reset(dataPointer);
+                        break;
+                    case Commands.JumpToBegin:
+                        dataPointer = 0;
+                        break;
+                    default:
+                        throw Exceptions.UnknownCommand;
                 }
 
             }
 
-            //Console.WriteLine((char)cellArray[0]);
+            inputStreamReader.Close();
+            outputStreamWriter.Flush();
+            outputStreamWriter.Close();
 
-            //inputStreamReader.Close();
-            //outputStreamWriter.Flush();
-            //outputStreamWriter.Close();
             return 0;
         }
 
+        #region Commands implementation
         private static int MoveRight(int dataPointer)
         {
             dataPointer++;
@@ -101,25 +126,73 @@ namespace interpreter
 
         private static int Increment(int dataPointer)
         {
-            var oldValue = cellArray[dataPointer];
-            //if(oldValue == 0xFF)
             cellArray[dataPointer]++;
-
             return dataPointer;
         }
 
         private static int Decrement(int dataPointer)
         {
-            var oldValue = cellArray[dataPointer];
-            //if(oldValue == 0xFF)
             cellArray[dataPointer]--;
-
             return dataPointer;
         }
 
         private static int Write(int dataPointer)
         {
+            outputStreamWriter.Write(cellArray[dataPointer]);
+            return dataPointer;
+        }
 
+        private static int Read(int dataPointer)
+        {
+            try
+            {
+                cellArray[dataPointer] = inputStreamReader.ReadByte();
+                return dataPointer;
+            }
+            catch (EndOfStreamException)
+            {
+                throw Exceptions.UnableToReadData;
+            }
+            catch (Exception e)
+            {
+                throw;
+            }
+        }
+
+        private static int JumpForward(int dataPointer, int index)
+        {
+            return cellArray[dataPointer] == 0x00 ? jumpPairs.First(x => x.ForwardIndex == index).BackwardIndex : index;
+        }
+
+        private static int JumpBackward(int dataPointer, int index)
+        {
+            return cellArray[dataPointer] == 0x00 ? index : jumpPairs.First(x => x.BackwardIndex == index).ForwardIndex;
+        }
+
+        private static int AddDecadic(int dataPointer, int index)
+        {
+            if (index == commands.Count - 1)
+                throw Exceptions.MissingCommand;
+
+            var tmp = Convert.ToByte(cmdDictionary.First(x => x.Value == commands[index + 1]).Key, 2);
+            cellArray[dataPointer] += tmp;
+
+            return dataPointer;
+        }
+
+        private static int RemoveDecadic(int dataPointer, int index)
+        {
+            if (index == commands.Count - 1)
+                throw Exceptions.MissingCommand;
+
+            cellArray[dataPointer] -= Convert.ToByte(cmdDictionary.First(x => x.Value == commands[index]).Key, 2);
+
+            return dataPointer;
+        }
+
+        private static int Reset(int dataPointer)
+        {
+            cellArray[dataPointer] = 0x00;
 
             return dataPointer;
         }
@@ -131,12 +204,6 @@ namespace interpreter
         /// <param name="prgPath">Path to file with source code.</param>
         private static void CreateProgram(string prgPath)
         {
-            if (!File.Exists(prgPath))
-                throw Exceptions.FileNotFound;
-
-            if (new FileInfo(prgPath).Extension != ".txt")
-                throw Exceptions.UnsupportedFileType;
-
             ReadProgram(prgPath);
 
             if (commands.Count <= 0)
@@ -183,11 +250,6 @@ namespace interpreter
                 }
             }
 
-            foreach (var cmnd in commands)
-            {
-                Console.WriteLine(cmnd);
-            }
-
             if (builder.Length != 0)
                 throw Exceptions.InconsistentSourceCode;
         }
@@ -220,6 +282,15 @@ namespace interpreter
                 default:
                     return CreateJumpPairs(++currentIndex);
             }
+        }
+
+        private void CheckFile(string path, string extension)
+        {
+            if (!File.Exists(path))
+                throw Exceptions.FileNotFound(path);
+
+            if (new FileInfo(path).Extension != extension)
+                throw Exceptions.UnsupportedFileType(path);
         }
     }
 }
