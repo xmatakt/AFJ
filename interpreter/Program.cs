@@ -58,9 +58,8 @@ namespace interpreter
                 Console.ForegroundColor = ConsoleColor.Green;
                 Console.WriteLine("\nPress any key to escape...");
                 Console.ForegroundColor = ConsoleColor.White;
+                Console.ReadKey();
             }
-
-            Console.ReadLine();
         }
     }
 }

@@ -24,5 +24,10 @@ namespace interpreter
         {
             return new Exception("Unsupported file type (" + path + ")!\n Only .txt or .bin files a supported.");
         }
+
+        public static Exception UnsupportedCommandDetail(string command)
+        {
+            return new Exception("Unsupported command in source code [ " + command + " ]!");
+        }
     }
 }

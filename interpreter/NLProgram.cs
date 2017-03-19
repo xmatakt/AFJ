@@ -155,7 +155,7 @@ namespace interpreter
             }
             catch (Exception e)
             {
-                throw;
+                throw e;
             }
         }
 
@@ -245,8 +245,8 @@ namespace interpreter
 
                     if (cmdDictionary.ContainsKey(command))
                         commands.Add(cmdDictionary[command]);
-                    else 
-                        throw Exceptions.UnsupportedCommand;
+                    else
+                        throw Exceptions.UnsupportedCommandDetail(command) ;
                 }
             }
 
